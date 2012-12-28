@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <locale.h>
+#include <libgen.h>
 #include <libintl.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -857,6 +858,23 @@ static int removeService(const char * title, const char * target, struct appConf
     return 0;
 }
 
+/* Default to a sysroot relative to the executable location */
+char * default_sysroot(void) {
+    char linkBuf[512];
+    char * sysroot, * binDir;
+    int bytes;
+
+    if ((bytes = readlink("/proc/self/exe", linkBuf, sizeof(linkBuf) - 1)) < 0)
+	return NULL;
+
+    linkBuf[bytes] = '\0';
+
+    binDir = dirname(strdup(linkBuf));
+    sysroot = dirname(binDir);
+
+    return sysroot;
+}
+
 int main(int argc, const char ** argv) {
     const char ** nextArg;
     char * end;
@@ -864,12 +882,15 @@ int main(int argc, const char ** argv) {
     enum programModes mode = MODE_UNKNOWN;
     struct alternative newAlt = { -1, { NULL, NULL, NULL }, NULL, NULL, 0 };
     struct stat sb;
-    struct appConfig *config = malloc(sizeof(struct appConfig));
+    struct appConfig *config = alloca(sizeof(struct appConfig));
 
     config->altDir = "/etc/alternatives";
     config->stateDir = "/var/lib/alternatives";
-    config->sysroot = getenv("ALTERNATIVES_ROOT");
     config->flags = 0;
+
+    config->sysroot = getenv("ALTERNATIVES_ROOT");
+    if (!config->sysroot)
+	config->sysroot = default_sysroot();
 
     if (config->sysroot) {
 	asprintf(&config->altDir, "%s%s", config->sysroot, config->altDir);
