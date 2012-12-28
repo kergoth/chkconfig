@@ -58,6 +58,7 @@ struct alternativeSet {
 struct appConfig {
     char * altDir;
     char * stateDir;
+    char * sysroot;
     int flags;
 };
 
@@ -394,16 +395,27 @@ static int removeLinks(struct linkSet * l, struct appConfig * config) {
 
 static int makeLinks(struct linkSet * l, struct appConfig * config) {
     char * sl;
+    char * facility = l->facility;
+
+    if (config->sysroot)
+	asprintf(&facility, "%s%s", config->sysroot, l->facility);
 
     sl = alloca(strlen(config->altDir) + strlen(l->title) + 2);
     sprintf(sl, "%s/%s", config->altDir, l->title);
-    if (isLink(l->facility)) {
-	    if (FL_TEST(config->flags)) {
-		    printf(_("would link %s -> %s\n"), l->facility, sl);
-	    } else {
-	            unlink(l->facility);
+    if (isLink(facility)) {
+	    char * sl_dest = sl;
 
-		    if (symlink(sl, l->facility)) {
+	    if (config->sysroot) {
+		    sl_dest = malloc(strlen(sl) - strlen(config->sysroot) + 1);
+		    strcpy(sl_dest, &sl[strlen(config->sysroot)]);
+	    }
+
+	    if (FL_TEST(config->flags)) {
+		    printf(_("would link %s -> %s\n"), facility, sl_dest);
+	    } else {
+	            unlink(facility);
+
+		    if (symlink(sl_dest, facility)) {
 			    fprintf(stderr, _("failed to link %s -> %s: %s\n"),
 				    l->facility, sl, strerror(errno));
 			    return 1;
@@ -852,6 +864,7 @@ int main(int argc, const char ** argv) {
 
     config->altDir = "/etc/alternatives";
     config->stateDir = "/var/lib/alternatives";
+    config->sysroot = getenv("ALTERNATIVES_ROOT");
     config->flags = 0;
 
     setlocale(LC_ALL, "");
@@ -925,9 +938,19 @@ int main(int argc, const char ** argv) {
 	    if (!*nextArg) usage(2);
 	    config->stateDir = strdup(*nextArg);
 	    nextArg++;
+	} else if (!strcmp(*nextArg, "--sysroot")) {
+	    nextArg++;
+	    if (!*nextArg) usage(2);
+	    config->sysroot = strdup(*nextArg);
+	    nextArg++;
 	} else {
 	    usage(2);
 	}
+    }
+
+    if (config->sysroot) {
+	asprintf(&config->altDir, "%s%s", config->sysroot, config->altDir);
+	asprintf(&config->stateDir, "%s%s", config->sysroot, config->stateDir);
     }
 
     if (stat(config->altDir, &sb) || !S_ISDIR(sb.st_mode) ||
