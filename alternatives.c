@@ -55,6 +55,12 @@ struct alternativeSet {
     char * currentLink;
 };
 
+struct appConfig {
+    char * altDir;
+    char * stateDir;
+    int flags;
+};
+
 enum programModes { MODE_UNKNOWN, MODE_INSTALL, MODE_REMOVE, MODE_AUTO,
 		    MODE_DISPLAY, MODE_CONFIG, MODE_SET,
 		    MODE_SLAVE, MODE_VERSION, MODE_USAGE };
@@ -153,8 +159,7 @@ char * parseLine(char ** buf) {
     return strdup(start);
 }
 
-static int readConfig(struct alternativeSet * set, const char * title,
-		      const char * altDir, const char * stateDir, int flags) {
+static int readState(struct alternativeSet * set, const char * title, struct appConfig * config) {
     char * path;
     int fd;
     int i;
@@ -175,10 +180,10 @@ static int readConfig(struct alternativeSet * set, const char * title,
     set->best = 0;
     set->current = -1;
 
-    path = alloca(strlen(stateDir) + strlen(title) + 2);
-    sprintf(path, "%s/%s", stateDir, title);
+    path = alloca(strlen(config->stateDir) + strlen(title) + 2);
+    sprintf(path, "%s/%s", config->stateDir, title);
 
-    if (FL_VERBOSE(flags))
+    if (FL_VERBOSE(config->flags))
 	printf(_("reading %s\n"), path);
 
     if ((fd = open(path, O_RDONLY)) < 0) {
@@ -320,7 +325,7 @@ static int readConfig(struct alternativeSet * set, const char * title,
 	}
     }
 
-    sprintf(path, "%s/%s", altDir, set->alts[0].master.title);
+    sprintf(path, "%s/%s", config->altDir, set->alts[0].master.title);
 
     if (((i = readlink(path, linkBuf, sizeof(linkBuf) - 1)) < 0)) {
 	fprintf(stderr, _("failed to read link %s: %s\n"),
@@ -336,12 +341,12 @@ static int readConfig(struct alternativeSet * set, const char * title,
     if (i == set->numAlts) {
 	set->mode = MANUAL;
 	set->current = -1;
-	if (FL_VERBOSE(flags))
+	if (FL_VERBOSE(config->flags))
 	    printf(_("link points to no alternative -- setting mode to manual\n"));
     } else {
 	if (i != set->best && set->mode == AUTO) {
 	    set->mode = MANUAL;
-	    if (FL_VERBOSE(flags))
+	    if (FL_VERBOSE(config->flags))
 		printf(_("link changed -- setting mode to manual\n"));
 	}
 	set->current = i;
@@ -364,19 +369,19 @@ static int isLink(char *path)  {
 }
 
 
-static int removeLinks(struct linkSet * l, const char * altDir, int flags) {
+static int removeLinks(struct linkSet * l, struct appConfig * config) {
     char * sl;
 
-    sl = alloca(strlen(altDir) + strlen(l->title) + 2);
-    sprintf(sl, "%s/%s", altDir, l->title);
-    if (FL_TEST(flags)) {
+    sl = alloca(strlen(config->altDir) + strlen(l->title) + 2);
+    sprintf(sl, "%s/%s", config->altDir, l->title);
+    if (FL_TEST(config->flags)) {
 	printf(_("would remove %s\n"), sl);
     } else if (isLink(sl) && unlink(sl) && errno != ENOENT) {
 	fprintf(stderr, _("failed to remove link %s: %s\n"),
 		sl, strerror(errno));
 	return 1;
     }
-    if (FL_TEST(flags)) {
+    if (FL_TEST(config->flags)) {
 	printf(_("would remove %s\n"), l->facility);
     } else if (isLink(l->facility) && unlink(l->facility) && errno != ENOENT) {
 	fprintf(stderr, _("failed to remove link %s: %s\n"),
@@ -387,14 +392,13 @@ static int removeLinks(struct linkSet * l, const char * altDir, int flags) {
     return 0;
 }
 
-static int makeLinks(struct linkSet * l, const char * altDir, int flags) {
+static int makeLinks(struct linkSet * l, struct appConfig * config) {
     char * sl;
-    struct stat sb;
 
-    sl = alloca(strlen(altDir) + strlen(l->title) + 2);
-    sprintf(sl, "%s/%s", altDir, l->title);
+    sl = alloca(strlen(config->altDir) + strlen(l->title) + 2);
+    sprintf(sl, "%s/%s", config->altDir, l->title);
     if (isLink(l->facility)) {
-	    if (FL_TEST(flags)) {
+	    if (FL_TEST(config->flags)) {
 		    printf(_("would link %s -> %s\n"), l->facility, sl);
 	    } else {
 	            unlink(l->facility);
@@ -407,7 +411,7 @@ static int makeLinks(struct linkSet * l, const char * altDir, int flags) {
 	    }
     }
 
-    if (FL_TEST(flags)) {
+    if (FL_TEST(config->flags)) {
 	printf(_("would link %s -> %s\n"), sl, l->target);
     } else {
 	if (unlink(sl) && errno != ENOENT){
@@ -426,8 +430,7 @@ static int makeLinks(struct linkSet * l, const char * altDir, int flags) {
     return 0;
 }
 
-static int writeState(struct alternativeSet *  set, const char * altDir,
-		      const char * stateDir, int forceLinks, int flags) {
+static int writeState(struct alternativeSet *  set, int forceLinks, struct appConfig * config) {
     char * path;
     char * path2;
     int fd;
@@ -436,13 +439,13 @@ static int writeState(struct alternativeSet *  set, const char * altDir,
     int rc = 0;
     struct alternative * alt;
 
-    path = alloca(strlen(stateDir) + strlen(set->alts[0].master.title) + 6);
-    sprintf(path, "%s/%s.new", stateDir, set->alts[0].master.title);
+    path = alloca(strlen(config->stateDir) + strlen(set->alts[0].master.title) + 6);
+    sprintf(path, "%s/%s.new", config->stateDir, set->alts[0].master.title);
 
-    path2 = alloca(strlen(stateDir) + strlen(set->alts[0].master.title) + 2);
-    sprintf(path2, "%s/%s", stateDir, set->alts[0].master.title);
+    path2 = alloca(strlen(config->stateDir) + strlen(set->alts[0].master.title) + 2);
+    sprintf(path2, "%s/%s", config->stateDir, set->alts[0].master.title);
 
-    if (FL_TEST(flags))
+    if (FL_TEST(config->flags))
 	fd = dup(1);
     else
 	fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0644);
@@ -481,7 +484,7 @@ static int writeState(struct alternativeSet *  set, const char * altDir,
 
     fclose(f);
 
-    if (!FL_TEST(flags) && rename(path, path2)) {
+    if (!FL_TEST(config->flags) && rename(path, path2)) {
 	fprintf(stderr, _("failed to replace %s with %s: %s\n"),
 		path2, path, strerror(errno));
 	unlink(path);
@@ -494,26 +497,26 @@ static int writeState(struct alternativeSet *  set, const char * altDir,
     alt = set->alts + ( set->current > 0 ? set->current : 0);
 
     if (forceLinks || set->mode == AUTO) {
-	rc |= makeLinks(&alt->master, altDir, flags);
+	rc |= makeLinks(&alt->master, config);
 	for (i = 0; i < alt->numSlaves; i++) {
-	        if (alt->slaves[i].target)
-			rc |= makeLinks(alt->slaves + i, altDir, flags);
+		if (alt->slaves[i].target)
+			rc |= makeLinks(alt->slaves + i, config);
 		else
-			rc |= removeLinks(alt->slaves + i, altDir, flags);
+			rc |= removeLinks(alt->slaves + i, config);
 	}
     }
 
-    if (!FL_TEST(flags)) {
+    if (!FL_TEST(config->flags)) {
 	    if (alt->initscript) {
 	            if (isSystemd(alt->initscript)) {
                             asprintf(&path, "/bin/systemctl -q enable %s.service", alt->initscript);
-                            if (FL_VERBOSE(flags))
+                            if (FL_VERBOSE(config->flags))
                                     printf(_("running %s\n"), path);
                             system(path);
                             free(path);
                     } else {
                             asprintf(&path, "/sbin/chkconfig --add %s", alt->initscript);
-                            if (FL_VERBOSE(flags))
+                            if (FL_VERBOSE(config->flags))
                                     printf(_("running %s\n"), path);
                             system(path);
                             free(path);
@@ -524,13 +527,13 @@ static int writeState(struct alternativeSet *  set, const char * altDir,
 		    if (tmpalt != alt && tmpalt->initscript) {
 		            if (isSystemd(tmpalt->initscript)) {
                                     asprintf(&path, "/bin/systemctl -q disable %s.service", tmpalt->initscript);
-                                    if (FL_VERBOSE(flags))
+                                    if (FL_VERBOSE(config->flags))
 				            printf(_("running %s\n"), path);
                                     system(path);
                                     free(path);
                             } else {
                                     asprintf(&path, "/sbin/chkconfig --del %s", tmpalt->initscript);
-                                    if (FL_VERBOSE(flags))
+                                    if (FL_VERBOSE(config->flags))
 				            printf(_("running %s\n"), path);
                                     system(path);
                                     free(path);
@@ -548,14 +551,13 @@ static int linkCmp(const void *a, const void *b) {
 	return strcmp(one->facility, two->facility);
 }
 
-static int addService(struct alternative newAlt, const char * altDir,
-		      const char * stateDir, int flags) {
+static int addService(struct alternative newAlt, struct appConfig * config) {
     struct alternativeSet set;
     struct alternative base;
     struct linkSet * newLinks;
     int i, j, k, rc;
 
-    if ( (rc=readConfig(&set, newAlt.master.title, altDir, stateDir, flags)) && rc != 3 && rc != 2)
+    if ( (rc=readState(&set, newAlt.master.title, config)) && rc != 3 && rc != 2)
 	return 2;
 
     if (set.numAlts) {
@@ -612,7 +614,7 @@ static int addService(struct alternative newAlt, const char * altDir,
 				}
 
 			}
-			removeLinks(base.slaves + i, altDir, flags);
+			removeLinks(base.slaves + i, config);
 			base.numSlaves--;
 			if (i != base.numSlaves)
 				base.slaves[i] = base.slaves[base.numSlaves];
@@ -666,19 +668,18 @@ static int addService(struct alternative newAlt, const char * altDir,
 	    set.numAlts++;
     }
 
-    if (writeState(&set, altDir, stateDir, 0, flags)) return 2;
+    if (writeState(&set, 0, config)) return 2;
 
     return 0;
 }
 
-static int displayService(char * title, const char * altDir,
-		          const char * stateDir, int flags) {
+static int displayService(char * title, struct appConfig * config) {
     struct alternativeSet set;
 
     int alt;
     int slave;
 
-    if (readConfig(&set, title, altDir, stateDir, flags)) return 2;
+    if (readState(&set, title, config)) return 2;
 
     if (set.mode == AUTO)
 	printf(_("%s - status is auto.\n"), title);
@@ -702,27 +703,25 @@ static int displayService(char * title, const char * altDir,
     return 0;
 }
 
-static int autoService(char * title, const char * altDir,
-		       const char * stateDir, int flags) {
+static int autoService(char * title, struct appConfig * config) {
     struct alternativeSet set;
 
-    if (readConfig(&set, title, altDir, stateDir, flags)) return 2;
+    if (readState(&set, title, config)) return 2;
     set.current = set.best;
     set.mode = AUTO;
 
-    if (writeState(&set, altDir, stateDir, 0, flags)) return 2;
+    if (writeState(&set, 0, config)) return 2;
 
     return 0;
 }
 
-static int configService(char * title, const char * altDir,
-		       const char * stateDir, int flags) {
+static int configService(char * title, struct appConfig * config) {
     struct alternativeSet set;
     int i;
     char choice[200];
     char * end = NULL;
 
-    if (readConfig(&set, title, altDir, stateDir, flags)) return 2;
+    if (readState(&set, title, config)) return 2;
 
     do {
 	printf("\n");
@@ -750,17 +749,16 @@ static int configService(char * title, const char * altDir,
     } while (!end || *end != '\n' || (set.current < 0) || (set.current >= set.numAlts));
 
     set.mode = MANUAL;
-    if (writeState(&set, altDir, stateDir, 1, flags)) return 2;
+    if (writeState(&set, 1, config)) return 2;
 
     return 0;
 }
 
-static int setService(const char * title, const char * target,
-		      const char * altDir, const char * stateDir, int flags) {
+static int setService(const char * title, const char * target, struct appConfig * config) {
     struct alternativeSet set;
     int i;
 
-    if (readConfig(&set, title, altDir, stateDir, flags)) return 2;
+    if (readState(&set, title, config)) return 2;
 
     for (i = 0; i < set.numAlts; i++)
 	if (!strcmp(set.alts[i].master.target, target)) break;
@@ -775,18 +773,17 @@ static int setService(const char * title, const char * target,
     set.current = i;
     set.mode = MANUAL;
 
-    if (writeState(&set, altDir, stateDir, 1, flags)) return 2;
+    if (writeState(&set, 1, config)) return 2;
 
     return 0;
 }
 
-static int removeService(const char * title, const char * target,
-		      const char * altDir, const char * stateDir, int flags) {
+static int removeService(const char * title, const char * target, struct appConfig * config) {
     int rc;
     struct alternativeSet set;
     int i;
 
-    if (readConfig(&set, title, altDir, stateDir, flags)) return 2;
+    if (readState(&set, title, config)) return 2;
 
     for (i = 0; i < set.numAlts; i++)
 	if (!strcmp(set.alts[i].master.target, target)) break;
@@ -801,14 +798,14 @@ static int removeService(const char * title, const char * target,
     if (set.numAlts == 1) {
 	char * path;
 
-	rc = removeLinks(&set.alts[0].master, altDir, flags);
+	rc = removeLinks(&set.alts[0].master, config);
 
 	for (i = 0; i < set.alts[0].numSlaves; i++)
-	    rc |= removeLinks(set.alts[0].slaves + i, altDir, flags);
+	    rc |= removeLinks(set.alts[0].slaves + i, config);
 
-	path = alloca(strlen(stateDir) + strlen(title) + 2);
-	sprintf(path, "%s/%s", stateDir, title);
-	if (FL_TEST(flags)) {
+	path = alloca(strlen(config->stateDir) + strlen(title) + 2);
+	sprintf(path, "%s/%s", config->stateDir, title);
+	if (FL_TEST(config->flags)) {
 	    printf(_("(would remove %s\n"), path);
 	} else if (unlink(path)) {
 	    fprintf(stderr, _("failed to remove %s: %s\n"), path,
@@ -839,7 +836,7 @@ static int removeService(const char * title, const char * target,
 	set.current = set.best;
     }
 
-    if (writeState(&set, altDir, stateDir, 0, flags)) return 2;
+    if (writeState(&set, 0, config)) return 2;
 
     return 0;
 }
@@ -850,10 +847,12 @@ int main(int argc, const char ** argv) {
     char * title, * target;
     enum programModes mode = MODE_UNKNOWN;
     struct alternative newAlt = { -1, { NULL, NULL, NULL }, NULL, NULL, 0 };
-    int flags = 0;
-    char * altDir = "/etc/alternatives";
-    char * stateDir = "/var/lib/alternatives";
     struct stat sb;
+    struct appConfig *config = malloc(sizeof(struct appConfig));
+
+    config->altDir = "/etc/alternatives";
+    config->stateDir = "/var/lib/alternatives";
+    config->flags = 0;
 
     setlocale(LC_ALL, "");
     bindtextdomain("chkconfig","/usr/share/locale");
@@ -907,10 +906,10 @@ int main(int argc, const char ** argv) {
 	    mode = MODE_USAGE;
 	    nextArg++;
 	} else if (!strcmp(*nextArg, "--test")) {
-	    flags |= FLAGS_TEST;
+	    config->flags |= FLAGS_TEST;
 	    nextArg++;
 	} else if (!strcmp(*nextArg, "--verbose")) {
-	    flags |= FLAGS_VERBOSE;
+	    config->flags |= FLAGS_VERBOSE;
 	    nextArg++;
 	} else if (!strcmp(*nextArg, "--version")) {
 	    if (mode != MODE_UNKNOWN) usage(2);
@@ -919,27 +918,27 @@ int main(int argc, const char ** argv) {
 	} else if (!strcmp(*nextArg, "--altdir")) {
 	    nextArg++;
 	    if (!*nextArg) usage(2);
-	    altDir = strdup(*nextArg);
+	    config->altDir = strdup(*nextArg);
 	    nextArg++;
 	} else if (!strcmp(*nextArg, "--admindir")) {
 	    nextArg++;
 	    if (!*nextArg) usage(2);
-	    stateDir = strdup(*nextArg);
+	    config->stateDir = strdup(*nextArg);
 	    nextArg++;
 	} else {
 	    usage(2);
 	}
     }
 
-    if (stat(altDir, &sb) || !S_ISDIR(sb.st_mode) ||
-	    access(altDir, F_OK)) {
-	fprintf(stderr, _("altdir %s invalid\n"), altDir);
+    if (stat(config->altDir, &sb) || !S_ISDIR(sb.st_mode) ||
+	    access(config->altDir, F_OK)) {
+	fprintf(stderr, _("altdir %s invalid\n"), config->altDir);
 	return(2);
     }
 
-    if (stat(stateDir, &sb) || !S_ISDIR(sb.st_mode) ||
-	    access(stateDir, F_OK)) {
-	fprintf(stderr, _("admindir %s invalid\n"), stateDir);
+    if (stat(config->stateDir, &sb) || !S_ISDIR(sb.st_mode) ||
+	    access(config->stateDir, F_OK)) {
+	fprintf(stderr, _("admindir %s invalid\n"), config->stateDir);
 	return(2);
     }
 
@@ -952,17 +951,17 @@ int main(int argc, const char ** argv) {
 	printf(_("alternatives version %s\n"), VERSION);
 	exit(0);
       case MODE_INSTALL:
-	return addService(newAlt, altDir, stateDir, flags);
+	return addService(newAlt, config);
       case MODE_DISPLAY:
-	return displayService(title, altDir, stateDir, flags);
+	return displayService(title, config);
       case MODE_AUTO:
-	return autoService(title, altDir, stateDir, flags);
+	return autoService(title, config);
       case MODE_CONFIG:
-	return configService(title, altDir, stateDir, flags);
+	return configService(title, config);
       case MODE_SET:
-	return setService(title, target, altDir, stateDir, flags);
+	return setService(title, target, config);
       case MODE_REMOVE:
-	return removeService(title, target, altDir, stateDir, flags);
+	return removeService(title, target, config);
       case MODE_SLAVE:
 	usage(2);
     }
