@@ -406,8 +406,8 @@ static int makeLinks(struct linkSet * l, struct appConfig * config) {
 	    char * sl_dest = sl;
 
 	    if (config->sysroot) {
-		    sl_dest = malloc(strlen(sl) - strlen(config->sysroot) + 1);
-		    strcpy(sl_dest, &sl[strlen(config->sysroot)]);
+		sl_dest = malloc(strlen(sl) - strlen(config->sysroot) + 1);
+		strcpy(sl_dest, &sl[strlen(config->sysroot)]);
 	    }
 
 	    if (FL_TEST(config->flags)) {
@@ -867,6 +867,11 @@ int main(int argc, const char ** argv) {
     config->sysroot = getenv("ALTERNATIVES_ROOT");
     config->flags = 0;
 
+    if (config->sysroot) {
+	asprintf(&config->altDir, "%s%s", config->sysroot, config->altDir);
+	asprintf(&config->stateDir, "%s%s", config->sysroot, config->stateDir);
+    }
+
     setlocale(LC_ALL, "");
     bindtextdomain("chkconfig","/usr/share/locale");
     textdomain("chkconfig");
@@ -946,11 +951,6 @@ int main(int argc, const char ** argv) {
 	} else {
 	    usage(2);
 	}
-    }
-
-    if (config->sysroot) {
-	asprintf(&config->altDir, "%s%s", config->sysroot, config->altDir);
-	asprintf(&config->stateDir, "%s%s", config->sysroot, config->stateDir);
     }
 
     if (stat(config->altDir, &sb) || !S_ISDIR(sb.st_mode) ||
