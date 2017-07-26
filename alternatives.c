@@ -372,6 +372,10 @@ static int isLink(char *path)  {
 
 static int removeLinks(struct linkSet * l, struct appConfig * config) {
     char * sl;
+    char * facility = l->facility;
+
+    if (config->sysroot)
+	asprintf(&facility, "%s%s", config->sysroot, l->facility);
 
     sl = alloca(strlen(config->altDir) + strlen(l->title) + 2);
     sprintf(sl, "%s/%s", config->altDir, l->title);
@@ -383,10 +387,10 @@ static int removeLinks(struct linkSet * l, struct appConfig * config) {
 	return 1;
     }
     if (FL_TEST(config->flags)) {
-	printf(_("would remove %s\n"), l->facility);
-    } else if (isLink(l->facility) && unlink(l->facility) && errno != ENOENT) {
+	printf(_("would remove %s\n"), facility);
+    } else if (isLink(facility) && unlink(facility) && errno != ENOENT) {
 	fprintf(stderr, _("failed to remove link %s: %s\n"),
-		l->facility, strerror(errno));
+		facility, strerror(errno));
 	return 1;
     }
 
